@@ -1,0 +1,17 @@
+{
+	"luci-mod-haproxy": {
+		"description": "HAProxy SNI Passthrough Manager",
+		"read": {
+			"uci": [ "haproxy" ],
+			"file": {
+				"/etc/haproxy/haproxy.cfg": [ "read" ]
+			}
+		},
+		"write": {
+			"uci": [ "haproxy" ],
+			"file": {
+				"/usr/sbin/haproxy-gen": [ "exec" ]
+			}
+		}
+	}
+}

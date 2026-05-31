@@ -1,0 +1,16 @@
+#!/bin/sh
+
+uci -q get haproxy.globals > /dev/null 2>&1 || {
+    uci batch <<-EOF
+        set haproxy.globals=globals
+        set haproxy.globals.maxconn=4096
+        set haproxy.globals.log=stdout local0
+        set haproxy.globals.stats_socket=/var/run/haproxy/haproxy.sock
+        set haproxy.globals.inspect_delay=5s
+        commit haproxy
+EOF
+}
+
+/usr/sbin/haproxy-gen 2>/dev/null || true
+
+exit 0

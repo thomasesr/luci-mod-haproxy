@@ -1,0 +1,5 @@
+config globals 'globals'
+	option maxconn        '4096'
+	option log            'stdout local0'
+	option stats_socket   '/var/run/haproxy/haproxy.sock'
+	option inspect_delay  '5s'

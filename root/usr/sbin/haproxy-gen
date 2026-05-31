@@ -1,0 +1,142 @@
+#!/bin/sh
+. /lib/functions.sh
+
+CFG="/etc/haproxy/haproxy.cfg"
+TMP="${CFG}.tmp"
+RULES_TMP="/tmp/haproxy-rules.$$"
+
+cleanup() { rm -f "$TMP" "$RULES_TMP"; }
+trap cleanup EXIT
+
+die() { echo "haproxy-gen: error: $*" >&2; exit 1; }
+
+config_load haproxy
+
+write_global() {
+    local maxconn log stats_socket
+    config_get maxconn      globals maxconn       '4096'
+    config_get log          globals log           'stdout local0'
+    config_get stats_socket globals stats_socket  '/var/run/haproxy/haproxy.sock'
+
+    cat >> "$TMP" <<EOF
+global
+    maxconn ${maxconn}
+    log ${log}
+    stats socket ${stats_socket} mode 660 level admin expose-fd listeners
+    stats timeout 30s
+
+defaults
+    mode tcp
+    log global
+    option tcplog
+    timeout connect 5s
+    timeout client  50s
+    timeout server  50s
+
+EOF
+}
+
+# Resolves one rule section to a single line:
+#   frontend_port fqdn server_host backend_port section_id
+resolve_rule() {
+    local sid="$1"
+    local sub_id server_id frontend_port backend_port
+    local sub_name domain_id domain_name server_host
+
+    config_get sub_id        "$sid" subdomain
+    config_get server_id     "$sid" server
+    config_get frontend_port "$sid" frontend_port
+    config_get backend_port  "$sid" backend_port
+
+    [ -n "$sub_id" ] && [ -n "$server_id" ] && \
+    [ -n "$frontend_port" ] && [ -n "$backend_port" ] || {
+        echo "haproxy-gen: skipping incomplete rule '${sid}'" >&2
+        return
+    }
+
+    config_get sub_name    "$sub_id"    name
+    config_get domain_id   "$sub_id"    domain
+    config_get domain_name "$domain_id" name
+    config_get server_host "$server_id" host
+
+    [ -n "$sub_name" ] && [ -n "$domain_name" ] && [ -n "$server_host" ] || {
+        echo "haproxy-gen: skipping rule '${sid}': unresolvable references" >&2
+        return
+    }
+
+    printf '%s %s.%s %s %s %s\n' \
+        "$frontend_port" "$sub_name" "$domain_name" \
+        "$server_host" "$backend_port" "$sid"
+}
+
+write_frontend() {
+    local port="$1"
+    local inspect_delay
+    config_get inspect_delay globals inspect_delay '5s'
+
+    {
+        printf 'frontend ft_%s\n'                                     "$port"
+        printf '    bind *:%s\n'                                       "$port"
+        printf '    mode tcp\n'
+        printf '    tcp-request inspect-delay %s\n'                   "$inspect_delay"
+        printf '    tcp-request content accept if { req_ssl_hello_type 1 }\n'
+        printf '\n'
+
+        grep "^${port} " "$RULES_TMP" | while read -r _p fqdn _h _bp sid; do
+            printf '    acl sni_%s req_ssl_sni -i %s\n' "$sid" "$fqdn"
+        done
+
+        grep "^${port} " "$RULES_TMP" | while read -r _p _fqdn _h _bp sid; do
+            printf '    use_backend bk_%s if sni_%s\n' "$sid" "$sid"
+        done
+
+        printf '\n'
+    } >> "$TMP"
+}
+
+write_backend() {
+    local _port="$1" _fqdn="$2" host="$3" bport="$4" sid="$5"
+    {
+        printf 'backend bk_%s\n'           "$sid"
+        printf '    mode tcp\n'
+        printf '    server s1 %s:%s\n'    "$host" "$bport"
+        printf '\n'
+    } >> "$TMP"
+}
+
+main() {
+    mkdir -p "$(dirname "$CFG")"
+    touch "$TMP" || die "cannot write to ${TMP}"
+
+    write_global
+
+    config_foreach resolve_rule rule > "$RULES_TMP"
+
+    if [ -s "$RULES_TMP" ]; then
+        local dupes
+        dupes=$(awk '{print $1 " " $2}' "$RULES_TMP" | sort | uniq -d)
+        [ -n "$dupes" ] && echo "haproxy-gen: warning: duplicate port+SNI combos will shadow each other:" >&2 \
+                        && echo "$dupes" >&2
+
+        local ports
+        ports=$(awk '{print $1}' "$RULES_TMP" | sort -un)
+
+        for port in $ports; do
+            write_frontend "$port"
+        done
+
+        while read -r port fqdn host bport sid; do
+            write_backend "$port" "$fqdn" "$host" "$bport" "$sid"
+        done < "$RULES_TMP"
+    fi
+
+    haproxy -c -f "$TMP" >/dev/null 2>&1 \
+        || die "config validation failed — inspect with: haproxy -c -f ${TMP}"
+
+    trap - EXIT
+    cleanup
+    mv "${TMP}" "$CFG"
+    service haproxy reload
+}
+
+main "$@"
