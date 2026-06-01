@@ -235,6 +235,13 @@ ${check_out}"
     rm -f "$STAGE" "$RULES_TMP"
     mv "$INSTALL_TMP" "$CFG" || die "failed to install ${CFG}"
 
+    # The stats socket lives under /var/run (tmpfs, wiped on boot). haproxy
+    # cannot create the directory itself and aborts if it is missing, so make
+    # sure it exists before (re)starting the service.
+    local stats_socket
+    config_get stats_socket globals stats_socket '/var/run/haproxy/haproxy.sock'
+    [ -n "$stats_socket" ] && mkdir -p "$(dirname "$stats_socket")"
+
     service haproxy reload
 }
 
