@@ -11,7 +11,8 @@
 		"write": {
 			"uci": [ "haproxy" ],
 			"file": {
-				"/usr/sbin/haproxy-gen": [ "exec" ]
+				"/usr/sbin/haproxy-gen": [ "exec" ],
+				"/usr/sbin/haproxy-ctl": [ "exec" ]
 			}
 		}
 	}

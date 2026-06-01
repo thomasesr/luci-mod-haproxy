@@ -3,6 +3,7 @@
 'require fs';
 'require uci';
 'require poll';
+'require ui';
 
 function fmtUptime(s) {
     s = parseInt(s, 10) || 0;
@@ -69,6 +70,28 @@ return view.extend({
         ]);
     },
 
+    // Run an init action (start/restart/stop) and refresh the status box.
+    handleCtl: function(action, statusBox) {
+        var self = this;
+        return fs.exec('/usr/sbin/haproxy-ctl', [action]).then(function(res) {
+            if (res.code === 0)
+                ui.addNotification(null,
+                    E('p', _('HAProxy %s succeeded.').format(action)), 'info');
+            else
+                ui.addNotification(null,
+                    E('p', _('HAProxy %s failed: ').format(action) +
+                        (res.stderr || res.stdout || _('unknown error'))), 'danger');
+        }).catch(function(err) {
+            ui.addNotification(null,
+                E('p', _('Error running haproxy-ctl: ') + err.message), 'danger');
+        }).then(function() {
+            return readStatus();
+        }).then(function(fresh) {
+            statusBox.innerHTML = '';
+            statusBox.appendChild(self.renderStatus(fresh));
+        });
+    },
+
     renderStatus: function(st) {
         var running = st && st.running;
         var badge = E('span', {
@@ -103,6 +126,23 @@ return view.extend({
 
         var statusBox = E('div', {}, this.renderStatus(st));
 
+        var controls = E('div', { 'class': 'cbi-page-actions', 'style': 'text-align:left;margin:0 0 1em 0' }, [
+            E('button', {
+                'class': 'btn cbi-button cbi-button-positive',
+                'click': ui.createHandlerFn(self, 'handleCtl', 'start', statusBox)
+            }, _('Start')),
+            ' ',
+            E('button', {
+                'class': 'btn cbi-button cbi-button-action',
+                'click': ui.createHandlerFn(self, 'handleCtl', 'restart', statusBox)
+            }, _('Restart')),
+            ' ',
+            E('button', {
+                'class': 'btn cbi-button cbi-button-negative',
+                'click': ui.createHandlerFn(self, 'handleCtl', 'stop', statusBox)
+            }, _('Stop'))
+        ]);
+
         var rows = ruleRows();
         var rulesTable = E('table', { 'class': 'table cbi-section-table' }, [
             E('tr', { 'class': 'tr table-titles' }, [
@@ -134,7 +174,8 @@ return view.extend({
             E('h2', {}, _('HAProxy Status')),
             E('div', { 'class': 'cbi-section' }, [
                 E('h3', {}, _('Service')),
-                statusBox
+                statusBox,
+                controls
             ]),
             E('div', { 'class': 'cbi-section' }, [
                 E('h3', {}, _('Active SNI Rules')),

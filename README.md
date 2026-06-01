@@ -84,8 +84,12 @@ It runs three ways:
 4. **SNI Rules** — pick a backend `server` and select one or more subdomains
    to route to it, then click **Apply Configuration**. The listen/backend
    ports are taken from the server's port list (shown in the rule).
-5. **Status** — read-only tab showing whether HAProxy is running, its PID,
-   uptime, listening ports, and the active SNI rules (auto-refreshes every 5s)
+5. **Status** — tab showing whether HAProxy is running, its PID, uptime,
+   listening ports, and the active SNI rules (auto-refreshes every 5s), with
+   Start / Restart / Stop buttons
+
+On install the module enables and starts both the config generator and
+haproxy, so it comes up automatically on every boot.
 
 Make sure your firewall forwards the relevant inbound ports (typically 443) to
 the OpenWrt router.
@@ -143,6 +147,7 @@ Dependencies: `haproxy`, `luci-base`.
 | `root/etc/config/haproxy` | UCI config with globals defaults |
 | `root/usr/sbin/haproxy-gen` | Config generator |
 | `root/usr/sbin/haproxy-status` | Read-only JSON status emitter for the Status view |
+| `root/usr/sbin/haproxy-ctl` | Allow-listed start/stop/restart wrapper for the Status buttons |
 | `root/etc/init.d/haproxy-gen` | procd init + UCI reload trigger |
 | `root/etc/uci-defaults/99-haproxy` | First-boot setup |
 | `root/usr/share/luci/menu.d/` | Sidebar navigation |

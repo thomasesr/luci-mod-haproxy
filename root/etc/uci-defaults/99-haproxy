@@ -11,6 +11,15 @@ uci -q get haproxy.globals > /dev/null 2>&1 || {
 EOF
 }
 
+# Enable boot start for both the config generator (runs first, builds the
+# config + creates the stats-socket dir) and haproxy itself. Neither is
+# enabled by default on install, so without this haproxy never comes up at boot.
+/etc/init.d/haproxy-gen enable 2>/dev/null
+/etc/init.d/haproxy     enable 2>/dev/null
+
+# Generate the config now, then (re)start haproxy so it is live immediately
+# after install rather than only after the next reboot.
 /usr/sbin/haproxy-gen 2>/dev/null || true
+/etc/init.d/haproxy restart 2>/dev/null || /etc/init.d/haproxy start 2>/dev/null || true
 
 exit 0

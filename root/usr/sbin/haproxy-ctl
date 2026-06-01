@@ -1,0 +1,13 @@
+#!/bin/sh
+# Thin, allow-listed wrapper around the haproxy init script for the LuCI
+# status view. Only the fixed set of actions below is permitted.
+
+case "$1" in
+    start|stop|restart|reload|status)
+        exec /etc/init.d/haproxy "$1"
+        ;;
+    *)
+        echo "usage: haproxy-ctl {start|stop|restart|reload|status}" >&2
+        exit 1
+        ;;
+esac
