@@ -71,19 +71,23 @@ return view.extend({
     },
 
     // Run an init action (start/restart/stop) and refresh the status box.
+    // start/restart use a 2s delay before re-reading status because procd
+    // returns immediately — haproxy needs time to actually bind and appear
+    // in /proc before pgrep finds it.
     handleCtl: function(action, statusBox) {
         var self = this;
+        var delay = (action === 'start' || action === 'restart') ? 2000 : 500;
+
         return fs.exec('/usr/sbin/haproxy-ctl', [action]).then(function(res) {
-            if (res.code === 0)
-                ui.addNotification(null,
-                    E('p', _('HAProxy %s succeeded.').format(action)), 'info');
-            else
+            if (res.code !== 0)
                 ui.addNotification(null,
                     E('p', _('HAProxy %s failed: ').format(action) +
                         (res.stderr || res.stdout || _('unknown error'))), 'danger');
         }).catch(function(err) {
             ui.addNotification(null,
                 E('p', _('Error running haproxy-ctl: ') + err.message), 'danger');
+        }).then(function() {
+            return new Promise(function(resolve) { window.setTimeout(resolve, delay); });
         }).then(function() {
             return readStatus();
         }).then(function(fresh) {
