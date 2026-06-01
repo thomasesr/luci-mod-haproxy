@@ -4,6 +4,9 @@
 		"order": 60,
 		"action": {
 			"type": "firstchild"
+		},
+		"depends": {
+			"acl": [ "luci-mod-haproxy" ]
 		}
 	},
 	"admin/services/haproxy/status": {
@@ -12,6 +15,9 @@
 		"action": {
 			"type": "view",
 			"path": "haproxy/status"
+		},
+		"depends": {
+			"acl": [ "luci-mod-haproxy" ]
 		}
 	},
 	"admin/services/haproxy/servers": {
@@ -20,6 +26,9 @@
 		"action": {
 			"type": "view",
 			"path": "haproxy/servers"
+		},
+		"depends": {
+			"acl": [ "luci-mod-haproxy" ]
 		}
 	},
 	"admin/services/haproxy/domains": {
@@ -28,6 +37,9 @@
 		"action": {
 			"type": "view",
 			"path": "haproxy/domains"
+		},
+		"depends": {
+			"acl": [ "luci-mod-haproxy" ]
 		}
 	},
 	"admin/services/haproxy/subdomains": {
@@ -36,6 +48,9 @@
 		"action": {
 			"type": "view",
 			"path": "haproxy/subdomains"
+		},
+		"depends": {
+			"acl": [ "luci-mod-haproxy" ]
 		}
 	},
 	"admin/services/haproxy/rules": {
@@ -44,6 +59,9 @@
 		"action": {
 			"type": "view",
 			"path": "haproxy/rules"
+		},
+		"depends": {
+			"acl": [ "luci-mod-haproxy" ]
 		}
 	}
 }

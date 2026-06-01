@@ -2,7 +2,7 @@
 # Emits HAProxy runtime status as JSON for the LuCI status view.
 # Read-only: never touches config or the service.
 
-CFG="/etc/haproxy/haproxy.cfg"
+CFG="/etc/haproxy.cfg"
 
 pid="$(pgrep -x haproxy 2>/dev/null | head -n1)"
 if [ -n "$pid" ]; then

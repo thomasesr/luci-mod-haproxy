@@ -12,7 +12,7 @@ where each connection goes.
 
 - Web UI under **Services → HAProxy** (modern LuCI JS, no Lua views)
 - CRUD for backend servers, domains, subdomains, and routing rules
-- Generates `/etc/haproxy/haproxy.cfg` from UCI config
+- Generates `/etc/haproxy.cfg` from UCI config
 - Validates with `haproxy -c` before replacing the live config — bad input
   never takes down the running proxy
 - Auto-regenerates on every `uci commit haproxy` (procd trigger)
@@ -50,7 +50,7 @@ connection unchanged to the same port on the backend.
 
 ### Config generation
 
-`/usr/sbin/haproxy-gen` reads the UCI config and writes `/etc/haproxy/haproxy.cfg`:
+`/usr/sbin/haproxy-gen` reads the UCI config and writes `/etc/haproxy.cfg`:
 
 1. Expands every `rule` into one entry per (subdomain × server port): the
    listen/backend port comes from the server's port list

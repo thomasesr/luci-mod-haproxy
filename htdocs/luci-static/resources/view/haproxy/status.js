@@ -85,7 +85,7 @@ return view.extend({
             [ _('Frontends'), st ? String(st.frontends) : '-' ],
             [ _('Backends'), st ? String(st.backends) : '-' ],
             [ _('Config file'),
-              (st && st.cfg_present) ? '/etc/haproxy/haproxy.cfg'
+              (st && st.cfg_present) ? '/etc/haproxy.cfg'
                                      : _('not generated yet') ]
         ];
 

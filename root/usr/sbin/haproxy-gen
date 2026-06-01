@@ -1,7 +1,8 @@
 #!/bin/sh
 . /lib/functions.sh
 
-CFG="/etc/haproxy/haproxy.cfg"
+# Matches HAPROXY_CONFIG in the OpenWrt haproxy init script (/etc/haproxy.cfg).
+CFG="/etc/haproxy.cfg"
 TMP="${CFG}.tmp"
 RULES_TMP="/tmp/haproxy-rules.$$"
 
@@ -217,8 +218,10 @@ ${check_out}"
     fi
 
     # 3. Atomically swap in the validated config, then reload.
+    #    Drop the EXIT trap and remove only the rules temp — TMP must survive
+    #    until the mv, or the rename has nothing to move.
     trap - EXIT
-    cleanup
+    rm -f "$RULES_TMP"
     mv "${TMP}" "$CFG" || die "failed to install ${CFG}"
     [ -s "$CFG" ] || die "generated config ${CFG} is empty"
 
