@@ -1,2 +1,23 @@
 .claude/
 CLAUDE.md
+
+# OpenWrt / LuCI build artifacts
+*.ipk
+*.apk
+/ipkg-*/
+ipkg-install/
+/tmp/
+.built
+.prepared
+.configured*
+.dep
+.pkgdir
+.source*
+.quilt_used
+
+# Compiled objects / shared libs
+*.o
+*.so
+
+# Compiled LuCI translations
+*.lmo
