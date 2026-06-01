@@ -6,6 +6,14 @@
 			"type": "firstchild"
 		}
 	},
+	"admin/services/haproxy/status": {
+		"title": "Status",
+		"order": 5,
+		"action": {
+			"type": "view",
+			"path": "haproxy/status"
+		}
+	},
 	"admin/services/haproxy/servers": {
 		"title": "Servers",
 		"order": 10,

@@ -38,7 +38,8 @@ return view.extend({
         var self = this;
 
         m = new form.Map('haproxy', _('SNI Rules'),
-            _('Map each subdomain.domain:port to a backend server:port via TCP SNI passthrough.'));
+            _('Map each subdomain.domain:port to a backend server via TCP SNI passthrough. ' +
+              'The backend is reached on the same port the rule listens on.'));
         self.map = m;
 
         s = m.section(form.TableSection, 'rule', _('Rules'));
@@ -63,10 +64,6 @@ return view.extend({
         uci.sections('haproxy', 'server').forEach(function(srv) {
             o.value(srv['.name'], srv.name || srv['.name']);
         });
-
-        o = s.option(form.Value, 'backend_port', _('Backend Port'));
-        o.datatype = 'port';
-        o.rmempty = false;
 
         return m.render().then(function(node) {
             node.appendChild(

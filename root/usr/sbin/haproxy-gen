@@ -38,18 +38,18 @@ EOF
 
 # Resolves one rule section to a single line:
 #   frontend_port fqdn server_host backend_port section_id
+# The backend port always equals the frontend (listen) port — SNI passthrough
+# forwards the connection unchanged to the same port on the backend.
 resolve_rule() {
     local sid="$1"
-    local sub_id server_id frontend_port backend_port
+    local sub_id server_id frontend_port
     local sub_name domain_id domain_name server_host
 
     config_get sub_id        "$sid" subdomain
     config_get server_id     "$sid" server
     config_get frontend_port "$sid" frontend_port
-    config_get backend_port  "$sid" backend_port
 
-    [ -n "$sub_id" ] && [ -n "$server_id" ] && \
-    [ -n "$frontend_port" ] && [ -n "$backend_port" ] || {
+    [ -n "$sub_id" ] && [ -n "$server_id" ] && [ -n "$frontend_port" ] || {
         echo "haproxy-gen: skipping incomplete rule '${sid}'" >&2
         return
     }
@@ -66,7 +66,7 @@ resolve_rule() {
 
     printf '%s %s.%s %s %s %s\n' \
         "$frontend_port" "$sub_name" "$domain_name" \
-        "$server_host" "$backend_port" "$sid"
+        "$server_host" "$frontend_port" "$sid"
 }
 
 write_frontend() {

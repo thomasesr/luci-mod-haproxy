@@ -27,7 +27,7 @@ section types:
 | `server` | Backend LAN server: `name`, `host` (IP/hostname), `ports` |
 | `domain` | Base domain, e.g. `example.com` |
 | `subdomain` | A label under a domain, e.g. `pve`, linked to a `domain` |
-| `rule` | Join record: `subdomain` + `frontend_port` → `server` + `backend_port` |
+| `rule` | Join record: `subdomain` + `frontend_port` → `server` |
 
 A rule resolves transitively to an SNI match:
 
@@ -35,18 +35,20 @@ A rule resolves transitively to an SNI match:
 subdomain (pve) + domain (example.com) = pve.example.com
 ```
 
-So a rule with `frontend_port 443` / `backend_port 8006` pointing at server
-`192.168.1.10` produces:
+So a rule with `frontend_port 443` pointing at server `192.168.1.10` produces:
 
 ```
-pve.example.com:443  →  192.168.1.10:8006
+pve.example.com:443  →  192.168.1.10:443
 ```
+
+The backend is always reached on the **same port** the rule listens on — SNI
+passthrough forwards the connection unchanged.
 
 ### Config generation
 
 `/usr/sbin/haproxy-gen` reads the UCI config and writes `/etc/haproxy/haproxy.cfg`:
 
-1. Resolves every `rule` to `frontend_port fqdn server_host backend_port`
+1. Resolves every `rule` to `frontend_port fqdn server_host` (backend port = listen port)
 2. Groups rules by `frontend_port` — one `frontend ft_<port>` per unique port
 3. Each frontend: `mode tcp`, `tcp-request inspect-delay`, an SNI ACL
    (`req_ssl_sni`) and a `use_backend` per rule
@@ -67,8 +69,10 @@ It runs three ways:
 2. **Domains** — add your base domains (e.g. `example.com`)
 3. **Subdomains** — add subdomains and link each to a domain; the view shows the
    resulting FQDN
-4. **SNI Rules** — map `subdomain.domain:listen_port` to a backend
-   `server:backend_port`, then click **Apply Configuration**
+4. **SNI Rules** — map `subdomain.domain:listen_port` to a backend `server`,
+   then click **Apply Configuration**. The backend is reached on the same port.
+5. **Status** — read-only tab showing whether HAProxy is running, its PID,
+   uptime, listening ports, and the active SNI rules (auto-refreshes every 5s)
 
 Make sure your firewall forwards the relevant inbound ports (typically 443) to
 the OpenWrt router.
@@ -99,7 +103,6 @@ config rule 'rule1'
     option subdomain     'sub1'
     option frontend_port '443'
     option server        'server1'
-    option backend_port  '8006'
 ```
 
 ## Building
@@ -119,6 +122,7 @@ Dependencies: `haproxy`, `luci-base`.
 | `Makefile` | OpenWrt package definition |
 | `root/etc/config/haproxy` | UCI config with globals defaults |
 | `root/usr/sbin/haproxy-gen` | Config generator |
+| `root/usr/sbin/haproxy-status` | Read-only JSON status emitter for the Status view |
 | `root/etc/init.d/haproxy-gen` | procd init + UCI reload trigger |
 | `root/etc/uci-defaults/99-haproxy` | First-boot setup |
 | `root/usr/share/luci/menu.d/` | Sidebar navigation |

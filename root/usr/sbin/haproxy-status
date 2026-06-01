@@ -1,0 +1,44 @@
+#!/bin/sh
+# Emits HAProxy runtime status as JSON for the LuCI status view.
+# Read-only: never touches config or the service.
+
+CFG="/etc/haproxy/haproxy.cfg"
+
+pid="$(pgrep -x haproxy 2>/dev/null | head -n1)"
+if [ -n "$pid" ]; then
+    running="true"
+    uptime="$(cut -d' ' -f1 /proc/uptime 2>/dev/null | cut -d. -f1)"
+    starttime="$(awk '{print $22}' "/proc/${pid}/stat" 2>/dev/null)"
+    clk="$(getconf CLK_TCK 2>/dev/null)"
+    [ -z "$clk" ] && clk=100
+    if [ -n "$uptime" ] && [ -n "$starttime" ]; then
+        uptime_s=$(( uptime - starttime / clk ))
+    else
+        uptime_s=0
+    fi
+else
+    running="false"
+    pid=""
+    uptime_s=0
+fi
+
+# Unique listen ports from the generated config.
+ports=""
+if [ -f "$CFG" ]; then
+    ports="$(awk '/^[[:space:]]*bind / { n=split($0,a,":"); p=a[n]; gsub(/[^0-9]/,"",p); if (p!="") print p }' "$CFG" | sort -un | tr '\n' ' ')"
+    ports="${ports% }"
+fi
+
+# Frontend / backend counts from the generated config.
+# grep -c exits non-zero on zero matches, so guard the count separately —
+# `grep -c || echo 0` would emit "0\n0" and corrupt the JSON.
+frontends=0
+backends=0
+if [ -f "$CFG" ]; then
+    frontends="$(grep -c '^frontend ' "$CFG")"
+    backends="$(grep -c '^backend ' "$CFG")"
+fi
+
+printf '{"running":%s,"pid":"%s","uptime":%s,"ports":"%s","frontends":%s,"backends":%s,"cfg_present":%s}\n' \
+    "$running" "$pid" "${uptime_s:-0}" "$ports" "${frontends:-0}" "${backends:-0}" \
+    "$( [ -f "$CFG" ] && echo true || echo false )"

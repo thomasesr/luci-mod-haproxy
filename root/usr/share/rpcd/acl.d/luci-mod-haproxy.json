@@ -4,7 +4,8 @@
 		"read": {
 			"uci": [ "haproxy" ],
 			"file": {
-				"/etc/haproxy/haproxy.cfg": [ "read" ]
+				"/etc/haproxy/haproxy.cfg": [ "read" ],
+				"/usr/sbin/haproxy-status": [ "exec" ]
 			}
 		},
 		"write": {
