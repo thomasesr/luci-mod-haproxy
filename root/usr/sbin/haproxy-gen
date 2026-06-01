@@ -104,6 +104,37 @@ write_backend() {
     } >> "$TMP"
 }
 
+# Extracts the unique TCP listen ports from a config file.
+listen_ports() {
+    awk '/^[[:space:]]*bind /{ n=split($0,a,":"); p=a[n]; gsub(/[^0-9]/,"",p); if (p!="") print p }' \
+        "$1" | sort -un
+}
+
+# Checks each listen port for a conflicting listener owned by a process other
+# than haproxy. Prints a human-readable conflict list and returns 1 on
+# conflict; returns 0 when all ports are free (or held only by haproxy).
+# If program ownership can't be determined (no -p support), it does not abort.
+check_ports() {
+    local ports="$1"
+    local netstat_out conflicts="" p owners
+
+    command -v netstat >/dev/null 2>&1 || return 0
+    netstat_out="$(netstat -lntp 2>/dev/null)"
+
+    for p in $ports; do
+        # Match listeners whose local address ends in :<port>, excluding
+        # haproxy's own sockets and entries with no resolvable program name.
+        owners="$(printf '%s\n' "$netstat_out" | awk -v re="[:.]${p}\$" '
+            $1 ~ /^tcp/ && $4 ~ re { n = split($NF, a, "/"); print (n > 1 ? a[2] : "") }' \
+            | grep -v '^haproxy$' | grep -v '^$' | grep -v '^-$' | sort -u | tr '\n' ',')"
+        owners="${owners%,}"
+        [ -n "$owners" ] && conflicts="${conflicts}${conflicts:+; }port ${p} already in use by ${owners}"
+    done
+
+    [ -n "$conflicts" ] && { printf '%s\n' "$conflicts"; return 1; }
+    return 0
+}
+
 main() {
     mkdir -p "$(dirname "$CFG")"
     touch "$TMP" || die "cannot write to ${TMP}"
@@ -128,14 +159,33 @@ main() {
         while read -r port fqdn host bport sid; do
             write_backend "$port" "$fqdn" "$host" "$bport" "$sid"
         done < "$RULES_TMP"
+    else
+        echo "haproxy-gen: warning: no usable rules — generated config has no frontends" >&2
     fi
 
-    haproxy -c -f "$TMP" >/dev/null 2>&1 \
-        || die "config validation failed — inspect with: haproxy -c -f ${TMP}"
+    # 1. Syntax + semantic validation. Does NOT bind ports, so it is safe to
+    #    run against the staged temp file while the live config keeps serving.
+    local check_out
+    check_out="$(haproxy -c -f "$TMP" 2>&1)" \
+        || die "config validation failed, live config untouched:
+${check_out}"
 
+    # 2. Port availability. Refuse to reload if a non-haproxy process already
+    #    holds one of the listen ports — otherwise haproxy fails to bind on
+    #    reload and the new rule silently never takes effect.
+    local bind_ports conflict
+    bind_ports="$(listen_ports "$TMP")"
+    if [ -n "$bind_ports" ]; then
+        conflict="$(check_ports "$bind_ports")" \
+            || die "refusing to reload — ${conflict}"
+    fi
+
+    # 3. Atomically swap in the validated config, then reload.
     trap - EXIT
     cleanup
-    mv "${TMP}" "$CFG"
+    mv "${TMP}" "$CFG" || die "failed to install ${CFG}"
+    [ -s "$CFG" ] || die "generated config ${CFG} is empty"
+
     service haproxy reload
 }
 

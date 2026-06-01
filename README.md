@@ -53,9 +53,15 @@ passthrough forwards the connection unchanged.
 3. Each frontend: `mode tcp`, `tcp-request inspect-delay`, an SNI ACL
    (`req_ssl_sni`) and a `use_backend` per rule
 4. Each rule gets a `backend bk_<id>` with a single `server` line
-5. Warns on duplicate `port + SNI` combinations
-6. Validates with `haproxy -c -f` **before** atomically replacing the live
-   config; on success runs `service haproxy reload`
+5. Warns on duplicate `port + SNI` combinations and on an empty rule set
+6. Validates with `haproxy -c -f` **before** touching the live config; on
+   failure it aborts and reports the validator output, leaving the running
+   config untouched
+7. Checks every listen port is free — if a process **other than haproxy**
+   already holds one, it refuses to reload rather than let the bind fail
+   silently
+8. Only then atomically replaces the live config and runs
+   `service haproxy reload`
 
 It runs three ways:
 
