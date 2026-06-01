@@ -3,10 +3,17 @@
 
 # Matches HAPROXY_CONFIG in the OpenWrt haproxy init script (/etc/haproxy.cfg).
 CFG="/etc/haproxy.cfg"
-TMP="${CFG}.tmp"
+
+# Build and validate the config in /tmp (RAM tmpfs) so flash is only written
+# once the config is known-good. STAGE never crosses into /etc.
+STAGE="/tmp/haproxy-gen.$$.cfg"
 RULES_TMP="/tmp/haproxy-rules.$$"
 
-cleanup() { rm -f "$TMP" "$RULES_TMP"; }
+# Install temp lives on the SAME filesystem as CFG so the final swap is an
+# atomic rename (mv across filesystems would be a non-atomic copy+unlink).
+INSTALL_TMP="${CFG}.tmp"
+
+cleanup() { rm -f "$STAGE" "$RULES_TMP" "$INSTALL_TMP"; }
 trap cleanup EXIT
 
 die() { echo "haproxy-gen: error: $*" >&2; exit 1; }
@@ -19,7 +26,7 @@ write_global() {
     config_get log          globals log           'stdout local0'
     config_get stats_socket globals stats_socket  '/var/run/haproxy/haproxy.sock'
 
-    cat >> "$TMP" <<EOF
+    cat >> "$STAGE" <<EOF
 global
     maxconn ${maxconn}
     log ${log}
@@ -128,7 +135,7 @@ write_frontend() {
         done
 
         printf '\n'
-    } >> "$TMP"
+    } >> "$STAGE"
 }
 
 # One backend per distinct (server, port) pair → host:port.
@@ -139,7 +146,7 @@ write_backends() {
             printf '    mode tcp\n'
             printf '    server s1 %s:%s\n'  "$host" "$port"
             printf '\n'
-        } >> "$TMP"
+        } >> "$STAGE"
     done
 }
 
@@ -176,7 +183,7 @@ check_ports() {
 
 main() {
     mkdir -p "$(dirname "$CFG")"
-    touch "$TMP" || die "cannot write to ${TMP}"
+    : > "$STAGE" || die "cannot write staging file ${STAGE}"
 
     write_global
 
@@ -203,7 +210,7 @@ main() {
     # 1. Syntax + semantic validation. Does NOT bind ports, so it is safe to
     #    run against the staged temp file while the live config keeps serving.
     local check_out
-    check_out="$(haproxy -c -f "$TMP" 2>&1)" \
+    check_out="$(haproxy -c -f "$STAGE" 2>&1)" \
         || die "config validation failed, live config untouched:
 ${check_out}"
 
@@ -211,19 +218,22 @@ ${check_out}"
     #    holds one of the listen ports — otherwise haproxy fails to bind on
     #    reload and the new rule silently never takes effect.
     local bind_ports conflict
-    bind_ports="$(listen_ports "$TMP")"
+    bind_ports="$(listen_ports "$STAGE")"
     if [ -n "$bind_ports" ]; then
         conflict="$(check_ports "$bind_ports")" \
             || die "refusing to reload — ${conflict}"
     fi
 
-    # 3. Atomically swap in the validated config, then reload.
-    #    Drop the EXIT trap and remove only the rules temp — TMP must survive
-    #    until the mv, or the rename has nothing to move.
+    # 3. Install. STAGE is on tmpfs and CFG on flash (different filesystems),
+    #    so copy STAGE onto a temp NEXT TO CFG, then rename — the rename is
+    #    same-filesystem and therefore atomic. A direct mv from /tmp would be
+    #    a non-atomic cross-filesystem copy+unlink.
+    cp "$STAGE" "$INSTALL_TMP" || die "failed to stage config at ${INSTALL_TMP}"
+    [ -s "$INSTALL_TMP" ] || die "staged config ${INSTALL_TMP} is empty"
+
     trap - EXIT
-    rm -f "$RULES_TMP"
-    mv "${TMP}" "$CFG" || die "failed to install ${CFG}"
-    [ -s "$CFG" ] || die "generated config ${CFG} is empty"
+    rm -f "$STAGE" "$RULES_TMP"
+    mv "$INSTALL_TMP" "$CFG" || die "failed to install ${CFG}"
 
     service haproxy reload
 }
