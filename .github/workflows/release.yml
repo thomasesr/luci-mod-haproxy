@@ -1,0 +1,97 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      OPENWRT_VERSION: 25.12.4
+      SDK_TARGET: x86/64
+      SDK_NAME: openwrt-sdk-25.12.4-x86-64_gcc-14.3.0_musl.Linux-x86_64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install host build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y gawk rsync file libncurses-dev zstd build-essential python3 unzip git
+
+      - name: Cache SDK
+        uses: actions/cache@v4
+        id: sdk-cache
+        with:
+          path: sdk.tar.zst
+          key: openwrt-sdk-${{ env.OPENWRT_VERSION }}-x86-64
+
+      - name: Download SDK
+        if: steps.sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          curl -fL -o sdk.tar.zst \
+            https://downloads.openwrt.org/releases/${{ env.OPENWRT_VERSION }}/targets/${{ env.SDK_TARGET }}/${{ env.SDK_NAME }}.tar.zst
+
+      - name: Extract SDK
+        run: |
+          tar --zstd -xf sdk.tar.zst
+          mv ${{ env.SDK_NAME }} sdk
+
+      - name: Setup feeds
+        working-directory: sdk
+        run: |
+          cp feeds.conf.default feeds.conf
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a -p luci
+          ./scripts/feeds install haproxy
+
+      - name: Link package
+        run: ln -sfn ${{ github.workspace }} sdk/package/luci-mod-haproxy
+
+      - name: Configure
+        working-directory: sdk
+        run: |
+          make defconfig
+          echo "CONFIG_PACKAGE_luci-mod-haproxy=m" >> .config
+          make defconfig
+
+      - name: Build
+        working-directory: sdk
+        run: make package/luci-mod-haproxy/compile V=s -j$(nproc)
+
+      - name: Collect APK
+        run: |
+          find sdk/bin -name 'luci-mod-haproxy*.apk' | head -1 | xargs -I{} cp {} luci-mod-haproxy-${{ github.ref_name }}-all.apk
+          sha256sum luci-mod-haproxy-${{ github.ref_name }}-all.apk > luci-mod-haproxy-${{ github.ref_name }}-all.apk.sha256
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body: |
+            ## luci-mod-haproxy ${{ github.ref_name }}
+
+            HAProxy SNI passthrough manager for OpenWrt ${{ env.OPENWRT_VERSION }}.
+
+            ### Install
+
+            ```sh
+            opkg install luci-base haproxy  # or: apk add luci-base haproxy
+            scp luci-mod-haproxy-${{ github.ref_name }}-all.apk root@router:/tmp/
+            apk add --allow-untrusted /tmp/luci-mod-haproxy-${{ github.ref_name }}-all.apk
+            ```
+
+            Works on **any architecture** (x86_64, mipsel_24kc/MT7621, aarch64, …) —
+            package contains only scripts and web assets.
+
+            ### Compatibility
+            - OpenWrt ${{ env.OPENWRT_VERSION }}
+            - Tested: x86_64 VM, MikroTik RouterBOARD 750Gr3 (MT7621)
+          files: |
+            luci-mod-haproxy-${{ github.ref_name }}-all.apk
+            luci-mod-haproxy-${{ github.ref_name }}-all.apk.sha256
+          fail_on_unmatched_files: true
