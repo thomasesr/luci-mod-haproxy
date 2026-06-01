@@ -32,24 +32,31 @@ function readStatus() {
     });
 }
 
-// Resolve all rule sections to displayable rows.
+// Resolve all rule sections to displayable rows — one per (subdomain x port),
+// since ports come from the selected server's port list.
 function ruleRows() {
     var rows = [];
     uci.sections('haproxy', 'rule').forEach(function(rule) {
-        var subId   = rule.subdomain || '';
-        var sub     = uci.get('haproxy', subId, 'name') || '';
-        var domId   = uci.get('haproxy', subId, 'domain') || '';
-        var dom     = uci.get('haproxy', domId, 'name') || '';
-        var fqdn    = (sub && dom) ? sub + '.' + dom : '—';
-        var port    = rule.frontend_port || '—';
         var srvId   = rule.server || '';
         var srvName = uci.get('haproxy', srvId, 'name') || srvId || '—';
         var srvHost = uci.get('haproxy', srvId, 'host') || '—';
-        rows.push([
-            fqdn + ':' + port,
-            srvName,
-            srvHost + ':' + port
-        ]);
+        var ports   = L.toArray(uci.get('haproxy', srvId, 'ports'));
+        var subs    = L.toArray(rule.subdomain);
+
+        subs.forEach(function(subId) {
+            var sub  = uci.get('haproxy', subId, 'name') || '';
+            var domId = uci.get('haproxy', subId, 'domain') || '';
+            var dom  = uci.get('haproxy', domId, 'name') || '';
+            var fqdn = (sub && dom) ? sub + '.' + dom : '—';
+
+            if (!ports.length) {
+                rows.push([ fqdn, srvName, srvHost ]);
+                return;
+            }
+            ports.forEach(function(port) {
+                rows.push([ fqdn + ':' + port, srvName, srvHost + ':' + port ]);
+            });
+        });
     });
     return rows;
 }
