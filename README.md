@@ -127,4 +127,4 @@ Dependencies: `haproxy`, `luci-base`.
 
 ## License
 
-See repository.
+GPL-2.0. See [LICENSE](LICENSE).
