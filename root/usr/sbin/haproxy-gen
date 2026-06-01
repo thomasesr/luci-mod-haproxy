@@ -109,8 +109,21 @@ _emit_subdomain() {
     done
 }
 
+# Port 80 is always an HTTP→HTTPS redirect — SNI (TLS) does not exist on
+# plain HTTP, so passthrough is impossible there.
+write_http_redirect() {
+    {
+        printf 'frontend ft_80\n'
+        printf '    bind *:80\n'
+        printf '    mode http\n'
+        printf '    http-request redirect scheme https code 301\n'
+        printf '\n'
+    } >> "$STAGE"
+}
+
 # One frontend per listen port: an SNI ACL per distinct FQDN, then a
 # use_backend per FQDN routing to that FQDN's backend on this port.
+# Port 80 is excluded — it is handled by write_http_redirect above.
 write_frontend() {
     local port="$1"
     local inspect_delay
@@ -139,8 +152,9 @@ write_frontend() {
 }
 
 # One backend per distinct (server, port) pair → host:port.
+# Port 80 entries are skipped — they redirect, they have no backend.
 write_backends() {
-    awk '{print $4, $3, $1}' "$RULES_TMP" | sort -u | while read -r bkid host port; do
+    awk '$1 != "80" {print $4, $3, $1}' "$RULES_TMP" | sort -u | while read -r bkid host port; do
         {
             printf 'backend bk_%s\n'        "$bkid"
             printf '    mode tcp\n'
@@ -187,16 +201,21 @@ main() {
 
     write_global
 
+    # Port 80 always redirects to HTTPS regardless of rules.
+    write_http_redirect
+
     config_foreach resolve_rule rule > "$RULES_TMP"
 
     if [ -s "$RULES_TMP" ]; then
         local dupes
-        dupes=$(awk '{print $1 " " $2}' "$RULES_TMP" | sort | uniq -d)
+        # Exclude port 80 from dupe check — it redirects, not passthrough.
+        dupes=$(awk '$1 != "80" {print $1 " " $2}' "$RULES_TMP" | sort | uniq -d)
         [ -n "$dupes" ] && echo "haproxy-gen: warning: duplicate port+SNI combos will shadow each other:" >&2 \
                         && echo "$dupes" >&2
 
         local ports
-        ports=$(awk '{print $1}' "$RULES_TMP" | sort -un)
+        # Exclude port 80 from SNI passthrough — handled by write_http_redirect.
+        ports=$(awk '$1 != "80" {print $1}' "$RULES_TMP" | sort -un)
 
         for port in $ports; do
             write_frontend "$port"
@@ -204,7 +223,7 @@ main() {
 
         write_backends
     else
-        echo "haproxy-gen: warning: no usable rules — generated config has no frontends" >&2
+        echo "haproxy-gen: warning: no usable rules — generated config has no SNI frontends" >&2
     fi
 
     # 1. Syntax + semantic validation. Does NOT bind ports, so it is safe to

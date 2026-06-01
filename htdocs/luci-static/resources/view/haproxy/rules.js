@@ -39,8 +39,8 @@ return view.extend({
 
         m = new form.Map('haproxy', _('SNI Rules'),
             _('Route one or more subdomains to a backend server via TCP SNI passthrough. ' +
-              'The listen and backend ports are taken automatically from the ' +
-              'selected server\'s port list — no port is configured here.'));
+              'Ports come from the selected server\'s port list. ' +
+              'Port 80 always redirects HTTP → HTTPS (301) regardless of rules — it cannot do SNI passthrough.'));
         self.map = m;
 
         s = m.section(form.TableSection, 'rule', _('Rules'));

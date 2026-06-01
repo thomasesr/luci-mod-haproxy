@@ -64,7 +64,10 @@ function ruleRows() {
                 return;
             }
             ports.forEach(function(port) {
-                rows.push([ fqdn + ':' + port, srvName, srvHost + ':' + port ]);
+                if (port === '80')
+                    rows.push([ fqdn + ':80', '— redirect —', '→ https://' + fqdn + '/' ]);
+                else
+                    rows.push([ fqdn + ':' + port, srvName, srvHost + ':' + port ]);
             });
         });
     });
