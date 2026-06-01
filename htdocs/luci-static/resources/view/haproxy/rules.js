@@ -66,6 +66,54 @@ return view.extend({
             o.value(sub['.name'], label);
         });
 
+        // Hide subdomains already claimed by another rule so they cannot be
+        // double-assigned. keylist/vallist are the internal arrays LuCI's
+        // ListValue/MultiValue uses to build the checkbox widget.
+        o.renderWidget = function(section_id, option_index, cfgvalue) {
+            var usedElsewhere = {};
+            uci.sections('haproxy', 'rule').forEach(function(rule) {
+                if (rule['.name'] === section_id) return;
+                L.toArray(rule.subdomain).forEach(function(sub) {
+                    usedElsewhere[sub] = true;
+                });
+            });
+
+            var origKey = (this.keylist || []).slice();
+            var origVal = (this.vallist || []).slice();
+            var fk = [], fv = [];
+            for (var i = 0; i < origKey.length; i++) {
+                if (!usedElsewhere[origKey[i]]) {
+                    fk.push(origKey[i]);
+                    fv.push(origVal[i]);
+                }
+            }
+            this.keylist = fk;
+            this.vallist = fv;
+            var w = form.MultiValue.prototype.renderWidget.call(
+                        this, section_id, option_index, cfgvalue);
+            this.keylist = origKey;
+            this.vallist = origVal;
+            return w;
+        };
+
+        // Belt-and-suspenders: catch double-assignment on save too.
+        o.validate = function(section_id, value) {
+            var selected = L.toArray(value);
+            var conflict = null;
+            uci.sections('haproxy', 'rule').forEach(function(rule) {
+                if (rule['.name'] === section_id) return;
+                L.toArray(rule.subdomain).forEach(function(sub) {
+                    if (selected.indexOf(sub) !== -1 && !conflict)
+                        conflict = sub;
+                });
+            });
+            if (conflict) {
+                var lbl = uci.get('haproxy', conflict, 'name') || conflict;
+                return _('Subdomain "%s" is already used in another rule.').format(lbl);
+            }
+            return true;
+        };
+
         o = s.option(form.DummyValue, '_ports', _('Ports'));
         o.cfgvalue = function(section_id) {
             var srvId = uci.get('haproxy', section_id, 'server') || '';
