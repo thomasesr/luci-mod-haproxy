@@ -11,7 +11,15 @@ return view.extend({
     },
 
     handleApply: function() {
-        return fs.exec('/usr/sbin/haproxy-gen', []).then(function(res) {
+        // Commit pending form edits to UCI before regenerating, otherwise
+        // haproxy-gen reads stale committed config and ignores unsaved rules.
+        return this.map.save(null, true).then(function() {
+            return uci.save();
+        }).then(function() {
+            return uci.apply();
+        }).then(function() {
+            return fs.exec('/usr/sbin/haproxy-gen', []);
+        }).then(function(res) {
             if (res.code === 0) {
                 ui.addNotification(null,
                     E('p', _('HAProxy configuration applied successfully.')), 'info');
@@ -31,6 +39,7 @@ return view.extend({
 
         m = new form.Map('haproxy', _('SNI Rules'),
             _('Map each subdomain.domain:port to a backend server:port via TCP SNI passthrough.'));
+        self.map = m;
 
         s = m.section(form.TableSection, 'rule', _('Rules'));
         s.addremove = true;
