@@ -4,6 +4,15 @@ USE_PROCD=1
 START=96
 
 start_service() {
+    # haproxy aborts if its stats socket directory is missing (/var/run is
+    # tmpfs — wiped on boot). Create it here at START=96, before haproxy
+    # starts at START=99, so procd never sees a crash on the first attempt.
+    local stats_socket
+    . /lib/functions.sh
+    config_load haproxy
+    config_get stats_socket globals stats_socket '/var/run/haproxy/haproxy.sock'
+    mkdir -p "$(dirname "$stats_socket")"
+
     /usr/sbin/haproxy-gen
 }
 
