@@ -1,44 +1,60 @@
 #!/bin/sh
 # Emits HAProxy runtime status as JSON for the LuCI status view.
 # Read-only: never touches config or the service.
+# Uses /proc scan instead of pgrep — pgrep may be absent or not in PATH
+# when executed via rpcd's file.exec in a restricted environment.
 
 CFG="/etc/haproxy.cfg"
 
-pid="$(pgrep -x haproxy 2>/dev/null | head -n1)"
+# Scan /proc for a process whose comm is exactly "haproxy".
+# In master-worker mode (-W) haproxy names the master "haproxy" too.
+pid=""
+for _dir in /proc/[0-9]*; do
+    read -r _comm < "${_dir}/comm" 2>/dev/null || continue
+    [ "$_comm" = "haproxy" ] || continue
+    pid="${_dir##*/}"
+    break
+done
+
 if [ -n "$pid" ]; then
     running="true"
-    uptime="$(cut -d' ' -f1 /proc/uptime 2>/dev/null | cut -d. -f1)"
+    # CLK_TCK is 100 on all Linux/OpenWrt targets (x86, ARM, MIPS).
+    # getconf is often absent in restricted exec environments; hardcode it.
+    sys_uptime="$(cut -d' ' -f1 /proc/uptime 2>/dev/null)"
+    sys_uptime="${sys_uptime%%.*}"
     starttime="$(awk '{print $22}' "/proc/${pid}/stat" 2>/dev/null)"
-    clk="$(getconf CLK_TCK 2>/dev/null)"
-    [ -z "$clk" ] && clk=100
-    if [ -n "$uptime" ] && [ -n "$starttime" ]; then
-        uptime_s=$(( uptime - starttime / clk ))
+    if [ -n "$sys_uptime" ] && [ -n "$starttime" ]; then
+        uptime_s=$(( sys_uptime - starttime / 100 ))
+        [ "$uptime_s" -lt 0 ] && uptime_s=0
     else
         uptime_s=0
     fi
 else
     running="false"
-    pid=""
     uptime_s=0
 fi
 
-# Unique listen ports from the generated config.
+# Listen ports from the generated config.
 ports=""
-if [ -f "$CFG" ]; then
-    ports="$(awk '/^[[:space:]]*bind / { n=split($0,a,":"); p=a[n]; gsub(/[^0-9]/,"",p); if (p!="") print p }' "$CFG" | sort -un | tr '\n' ' ')"
-    ports="${ports% }"
-fi
-
-# Frontend / backend counts from the generated config.
-# grep -c exits non-zero on zero matches, so guard the count separately —
-# `grep -c || echo 0` would emit "0\n0" and corrupt the JSON.
 frontends=0
 backends=0
 if [ -f "$CFG" ]; then
+    ports="$(awk '/^[[:space:]]*bind / {
+        n = split($0, a, ":")
+        p = a[n]
+        gsub(/[^0-9]/, "", p)
+        if (p != "") print p
+    }' "$CFG" | sort -un | tr '\n' ' ')"
+    ports="${ports% }"
     frontends="$(grep -c '^frontend ' "$CFG")"
     backends="$(grep -c '^backend ' "$CFG")"
 fi
 
 printf '{"running":%s,"pid":"%s","uptime":%s,"ports":"%s","frontends":%s,"backends":%s,"cfg_present":%s}\n' \
-    "$running" "$pid" "${uptime_s:-0}" "$ports" "${frontends:-0}" "${backends:-0}" \
-    "$( [ -f "$CFG" ] && echo true || echo false )"
+    "$running" \
+    "$pid" \
+    "${uptime_s:-0}" \
+    "$ports" \
+    "${frontends:-0}" \
+    "${backends:-0}" \
+    "$( [ -f "$CFG" ] && printf true || printf false )"

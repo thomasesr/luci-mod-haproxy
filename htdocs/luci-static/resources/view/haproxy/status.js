@@ -21,14 +21,23 @@ function fmtUptime(s) {
 
 function readStatus() {
     return fs.exec('/usr/sbin/haproxy-status', []).then(function(res) {
-        if (res.code !== 0)
-            return null;
-        try {
-            return JSON.parse(res.stdout || '');
-        } catch (e) {
+        if (res.code !== 0) {
+            console.error('haproxy-status exited ' + res.code + ': ' + (res.stderr || '(no stderr)'));
             return null;
         }
-    }).catch(function() {
+        var out = (res.stdout || '').trim();
+        if (!out) {
+            console.error('haproxy-status: empty output');
+            return null;
+        }
+        try {
+            return JSON.parse(out);
+        } catch (e) {
+            console.error('haproxy-status: JSON parse error: ' + e + ' — raw: ' + out);
+            return null;
+        }
+    }).catch(function(err) {
+        console.error('haproxy-status exec failed: ' + err);
         return null;
     });
 }
@@ -102,7 +111,7 @@ return view.extend({
             'class': 'label ' + (running ? 'label-success' : 'label-danger'),
             'style': 'padding:.2em .6em;border-radius:3px;color:#fff;background:' +
                      (running ? '#5cb85c' : '#d9534f')
-        }, running ? _('Running') : _('Stopped'));
+        }, running ? _('Running') : (st ? _('Stopped') : _('Unknown — check browser console')));
 
         var rows = [
             [ _('Service'), badge ],
